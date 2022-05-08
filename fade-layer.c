@@ -57,271 +57,271 @@ struct wl_surface *cursor_surface, *input_surface;
 static void draw(struct fl_surface *s);
 
 static void surface_frame_callback(
-		void *data, struct wl_callback *cb, uint32_t time) {
-	wl_callback_destroy(cb);
+        void *data, struct wl_callback *cb, uint32_t time) {
+    wl_callback_destroy(cb);
     struct fl_surface *s = data;
     s->frame_callback = NULL;
-	draw(s);
+    draw(s);
 }
 
 static struct wl_callback_listener frame_listener = {
-	.done = surface_frame_callback
+    .done = surface_frame_callback
 };
 
 static void draw(struct fl_surface *s) {
-	eglMakeCurrent(egl_display, s->egl_surface, s->egl_surface, egl_context);
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	long ms = (ts.tv_sec - s->demo.last_frame.tv_sec) * 1000 +
-		(ts.tv_nsec - s->demo.last_frame.tv_nsec) / 1000000;
+    eglMakeCurrent(egl_display, s->egl_surface, s->egl_surface, egl_context);
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    long ms = (ts.tv_sec - s->demo.last_frame.tv_sec) * 1000 +
+        (ts.tv_nsec - s->demo.last_frame.tv_nsec) / 1000000;
 
     s->demo.alpha += 1/(fade_time/ms);
     if (s->demo.alpha > 1) {
         s->demo.alpha = 1;
     }
 
-	glViewport(0, 0, s->width, s->height);
+    glViewport(0, 0, s->width, s->height);
     glClearColor(0, 0, 0, s->demo.alpha);
     glClear(GL_COLOR_BUFFER_BIT);
 
-	s->frame_callback = wl_surface_frame(s->surface);
-	wl_callback_add_listener(s->frame_callback, &frame_listener, s);
+    s->frame_callback = wl_surface_frame(s->surface);
+    wl_callback_add_listener(s->frame_callback, &frame_listener, s);
 
-	eglSwapBuffers(egl_display, s->egl_surface);
+    eglSwapBuffers(egl_display, s->egl_surface);
 
-	s->demo.last_frame = ts;
+    s->demo.last_frame = ts;
 }
 
 static void layer_surface_configure(void *data,
-		struct zwlr_layer_surface_v1 *surface,
-		uint32_t serial, uint32_t w, uint32_t h) {
+        struct zwlr_layer_surface_v1 *surface,
+        uint32_t serial, uint32_t w, uint32_t h) {
     struct fl_surface *s = data;
-	s->width = w;
-	s->height = h;
-	if (s->egl_window) {
-		wl_egl_window_resize(s->egl_window, s->width, s->height, 0, 0);
-	}
-	zwlr_layer_surface_v1_ack_configure(surface, serial);
+    s->width = w;
+    s->height = h;
+    if (s->egl_window) {
+        wl_egl_window_resize(s->egl_window, s->width, s->height, 0, 0);
+    }
+    zwlr_layer_surface_v1_ack_configure(surface, serial);
 }
 
 static void layer_surface_closed(void *data,
-		struct zwlr_layer_surface_v1 *surface) {
+        struct zwlr_layer_surface_v1 *surface) {
 
     struct fl_surface *s = data;
 
-	eglDestroySurface(egl_display, s->egl_surface);
-	wl_egl_window_destroy(s->egl_window);
-	zwlr_layer_surface_v1_destroy(surface);
-	wl_surface_destroy(s->surface);
-	run_display = false;
+    eglDestroySurface(egl_display, s->egl_surface);
+    wl_egl_window_destroy(s->egl_window);
+    zwlr_layer_surface_v1_destroy(surface);
+    wl_surface_destroy(s->surface);
+    run_display = false;
 }
 
 struct zwlr_layer_surface_v1_listener layer_surface_listener = {
-	.configure = layer_surface_configure,
-	.closed = layer_surface_closed,
+    .configure = layer_surface_configure,
+    .closed = layer_surface_closed,
 };
 
 static void wl_pointer_enter(void *data, struct wl_pointer *wl_pointer,
-		uint32_t serial, struct wl_surface *surface,
-		wl_fixed_t surface_x, wl_fixed_t surface_y) {
+        uint32_t serial, struct wl_surface *surface,
+        wl_fixed_t surface_x, wl_fixed_t surface_y) {
     // dont care
 }
 
 static void wl_pointer_leave(void *data, struct wl_pointer *wl_pointer,
-		uint32_t serial, struct wl_surface *surface) {
+        uint32_t serial, struct wl_surface *surface) {
     // dont care
 }
 
 static void wl_pointer_motion(void *data, struct wl_pointer *wl_pointer,
-		uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y) {
+        uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y) {
     exit(0);
 }
 
 static void wl_pointer_button(void *data, struct wl_pointer *wl_pointer,
-		uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
+        uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
     struct fl_surface *s = data;
-	if (input_surface == s->surface) {
-		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+    if (input_surface == s->surface) {
+        if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
             printf("ptr btn\n");
-		}
-	} else {
-		assert(false && "Unknown surface");
-	}
+        }
+    } else {
+        assert(false && "Unknown surface");
+    }
 }
 
 static void wl_pointer_axis(void *data, struct wl_pointer *wl_pointer,
-		uint32_t time, uint32_t axis, wl_fixed_t value) {
-	// Who cares
+        uint32_t time, uint32_t axis, wl_fixed_t value) {
+    // Who cares
 }
 
 static void wl_pointer_frame(void *data, struct wl_pointer *wl_pointer) {
-	// Who cares
+    // Who cares
 }
 
 static void wl_pointer_axis_source(void *data, struct wl_pointer *wl_pointer,
-		uint32_t axis_source) {
-	// Who cares
+        uint32_t axis_source) {
+    // Who cares
 }
 
 static void wl_pointer_axis_stop(void *data, struct wl_pointer *wl_pointer,
-		uint32_t time, uint32_t axis) {
-	// Who cares
+        uint32_t time, uint32_t axis) {
+    // Who cares
 }
 
 static void wl_pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer,
-		uint32_t axis, int32_t discrete) {
-	// Who cares
+        uint32_t axis, int32_t discrete) {
+    // Who cares
 }
 
 struct wl_pointer_listener pointer_listener = {
-	.enter = wl_pointer_enter,
-	.leave = wl_pointer_leave,
-	.motion = wl_pointer_motion,
-	.button = wl_pointer_button,
-	.axis = wl_pointer_axis,
-	.frame = wl_pointer_frame,
-	.axis_source = wl_pointer_axis_source,
-	.axis_stop = wl_pointer_axis_stop,
-	.axis_discrete = wl_pointer_axis_discrete,
+    .enter = wl_pointer_enter,
+    .leave = wl_pointer_leave,
+    .motion = wl_pointer_motion,
+    .button = wl_pointer_button,
+    .axis = wl_pointer_axis,
+    .frame = wl_pointer_frame,
+    .axis_source = wl_pointer_axis_source,
+    .axis_stop = wl_pointer_axis_stop,
+    .axis_discrete = wl_pointer_axis_discrete,
 };
 
 static void wl_keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
-		uint32_t format, int32_t fd, uint32_t size) {
-	// Who cares
+        uint32_t format, int32_t fd, uint32_t size) {
+    // Who cares
 }
 
 static void wl_keyboard_enter(void *data, struct wl_keyboard *wl_keyboard,
-		uint32_t serial, struct wl_surface *surface, struct wl_array *keys) {
-	fprintf(stderr, "Keyboard enter\n");
+        uint32_t serial, struct wl_surface *surface, struct wl_array *keys) {
+    fprintf(stderr, "Keyboard enter\n");
 }
 
 static void wl_keyboard_leave(void *data, struct wl_keyboard *wl_keyboard,
-		uint32_t serial, struct wl_surface *surface) {
-	fprintf(stderr, "Keyboard leave\n");
+        uint32_t serial, struct wl_surface *surface) {
+    fprintf(stderr, "Keyboard leave\n");
 }
 
 static void wl_keyboard_key(void *data, struct wl_keyboard *wl_keyboard,
-		uint32_t serial, uint32_t time, uint32_t key, uint32_t state) {
-	fprintf(stderr, "Key event: %d %d\n", key, state);
+        uint32_t serial, uint32_t time, uint32_t key, uint32_t state) {
+    fprintf(stderr, "Key event: %d %d\n", key, state);
     exit(0);
 }
 
 static void wl_keyboard_modifiers(void *data, struct wl_keyboard *wl_keyboard,
-		uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched,
-		uint32_t mods_locked, uint32_t group) {
-	// Who cares
+        uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched,
+        uint32_t mods_locked, uint32_t group) {
+    // Who cares
 }
 
 static void wl_keyboard_repeat_info(void *data, struct wl_keyboard *wl_keyboard,
-		int32_t rate, int32_t delay) {
-	// Who cares
+        int32_t rate, int32_t delay) {
+    // Who cares
 }
 
 static struct wl_keyboard_listener keyboard_listener = {
-	.keymap = wl_keyboard_keymap,
-	.enter = wl_keyboard_enter,
-	.leave = wl_keyboard_leave,
-	.key = wl_keyboard_key,
-	.modifiers = wl_keyboard_modifiers,
-	.repeat_info = wl_keyboard_repeat_info,
+    .keymap = wl_keyboard_keymap,
+    .enter = wl_keyboard_enter,
+    .leave = wl_keyboard_leave,
+    .key = wl_keyboard_key,
+    .modifiers = wl_keyboard_modifiers,
+    .repeat_info = wl_keyboard_repeat_info,
 };
 
 static void seat_handle_capabilities(void *data, struct wl_seat *wl_seat,
-		enum wl_seat_capability caps) {
-	if ((caps & WL_SEAT_CAPABILITY_POINTER)) {
-		pointer = wl_seat_get_pointer(wl_seat);
-		wl_pointer_add_listener(pointer, &pointer_listener, NULL);
-	}
-	if ((caps & WL_SEAT_CAPABILITY_KEYBOARD)) {
-		keyboard = wl_seat_get_keyboard(wl_seat);
-		wl_keyboard_add_listener(keyboard, &keyboard_listener, NULL);
-	}
+        enum wl_seat_capability caps) {
+    if ((caps & WL_SEAT_CAPABILITY_POINTER)) {
+        pointer = wl_seat_get_pointer(wl_seat);
+        wl_pointer_add_listener(pointer, &pointer_listener, NULL);
+    }
+    if ((caps & WL_SEAT_CAPABILITY_KEYBOARD)) {
+        keyboard = wl_seat_get_keyboard(wl_seat);
+        wl_keyboard_add_listener(keyboard, &keyboard_listener, NULL);
+    }
 }
 
 static void seat_handle_name(void *data, struct wl_seat *wl_seat,
-		const char *name) {
-	// Who cares
+        const char *name) {
+    // Who cares
 }
 
 const struct wl_seat_listener seat_listener = {
-	.capabilities = seat_handle_capabilities,
-	.name = seat_handle_name,
+    .capabilities = seat_handle_capabilities,
+    .name = seat_handle_name,
 };
 static void handle_wl_output_geometry(void *data, struct wl_output *wl_output,
-		int32_t x, int32_t y, int32_t width_mm, int32_t height_mm,
-		int32_t subpixel, const char *make, const char *model,
-		int32_t transform) {
+        int32_t x, int32_t y, int32_t width_mm, int32_t height_mm,
+        int32_t subpixel, const char *make, const char *model,
+        int32_t transform) {
 }
 
 static void handle_wl_output_mode(void *data, struct wl_output *output,
-		uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
-	// Who cares
+        uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
+    // Who cares
 }
 
 static void handle_wl_output_done(void *data, struct wl_output *output) {
-	// Who cares
+    // Who cares
 }
 
 static void handle_wl_output_scale(void *data, struct wl_output *output,
-		int32_t factor) {
+        int32_t factor) {
 
 }
 
 static void handle_wl_output_name(void *data, struct wl_output *output,
-		const char *name) {
+        const char *name) {
 }
 
 static void handle_wl_output_description(void *data, struct wl_output *output,
-		const char *description) {
-	// Who cares
+        const char *description) {
+    // Who cares
 }
 
 struct wl_output_listener _wl_output_listener = {
-	.geometry = handle_wl_output_geometry,
-	.mode = handle_wl_output_mode,
-	.done = handle_wl_output_done,
-	.scale = handle_wl_output_scale,
-	.name = handle_wl_output_name,
-	.description = handle_wl_output_description,
+    .geometry = handle_wl_output_geometry,
+    .mode = handle_wl_output_mode,
+    .done = handle_wl_output_done,
+    .scale = handle_wl_output_scale,
+    .name = handle_wl_output_name,
+    .description = handle_wl_output_description,
 };
 
 static void handle_global(void *data, struct wl_registry *registry,
-		uint32_t name, const char *interface, uint32_t version) {
-	if (strcmp(interface, wl_compositor_interface.name) == 0) {
-		compositor = wl_registry_bind(registry, name,
-				&wl_compositor_interface, 1);
-	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
-		shm = wl_registry_bind(registry, name,
-				&wl_shm_interface, 1);
+        uint32_t name, const char *interface, uint32_t version) {
+    if (strcmp(interface, wl_compositor_interface.name) == 0) {
+        compositor = wl_registry_bind(registry, name,
+                &wl_compositor_interface, 1);
+    } else if (strcmp(interface, wl_shm_interface.name) == 0) {
+        shm = wl_registry_bind(registry, name,
+                &wl_shm_interface, 1);
     } else if (strcmp(interface, wl_output_interface.name) == 0) {
         struct fl_surface *s = calloc(1, sizeof(struct fl_surface));
         clock_gettime(CLOCK_MONOTONIC, &s->demo.last_frame);
-		s->output = wl_registry_bind(registry, name,
-				&wl_output_interface, version < 4 ? version : 4 );
-		s->output_global_name = name;
-		wl_output_add_listener(s->output, &_wl_output_listener, s->surface);
+        s->output = wl_registry_bind(registry, name,
+                &wl_output_interface, version < 4 ? version : 4 );
+        s->output_global_name = name;
+        wl_output_add_listener(s->output, &_wl_output_listener, s->surface);
         wl_list_insert(&fl_surfaces, &s->link);
-	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
-		seat = wl_registry_bind(registry, name,
-				&wl_seat_interface, 1);
-		wl_seat_add_listener(seat, &seat_listener, NULL);
-	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
-		layer_shell = wl_registry_bind(registry, name,
-			&zwlr_layer_shell_v1_interface, version < 4 ? version : 4);
-	} else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
-		xdg_wm_base = wl_registry_bind(
-				registry, name, &xdg_wm_base_interface, 1);
-	}
+    } else if (strcmp(interface, wl_seat_interface.name) == 0) {
+        seat = wl_registry_bind(registry, name,
+                &wl_seat_interface, 1);
+        wl_seat_add_listener(seat, &seat_listener, NULL);
+    } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
+        layer_shell = wl_registry_bind(registry, name,
+                &zwlr_layer_shell_v1_interface, version < 4 ? version : 4);
+    } else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
+        xdg_wm_base = wl_registry_bind(
+                registry, name, &xdg_wm_base_interface, 1);
+    }
 }
 
 static void handle_global_remove(void *data, struct wl_registry *registry,
-		uint32_t name) {
-	// who cares
+        uint32_t name) {
+    // who cares
 }
 
 static const struct wl_registry_listener registry_listener = {
-	.global = handle_global,
-	.global_remove = handle_global_remove,
+    .global = handle_global,
+    .global_remove = handle_global_remove,
 };
 
 int main(int argc, char **argv) {
@@ -335,33 +335,33 @@ int main(int argc, char **argv) {
                 return 1;
         }
     }
-	char *namespace = "wlroots";
-	display = wl_display_connect(NULL);
-	if (display == NULL) {
-		fprintf(stderr, "Failed to create display\n");
-		return 1;
-	}
-	wl_list_init(&fl_surfaces);
-	struct wl_registry *registry = wl_display_get_registry(display);
-	wl_registry_add_listener(registry, &registry_listener, NULL);
-	wl_display_roundtrip(display);
+    char *namespace = "wlroots";
+    display = wl_display_connect(NULL);
+    if (display == NULL) {
+        fprintf(stderr, "Failed to create display\n");
+        return 1;
+    }
+    wl_list_init(&fl_surfaces);
+    struct wl_registry *registry = wl_display_get_registry(display);
+    wl_registry_add_listener(registry, &registry_listener, NULL);
+    wl_display_roundtrip(display);
 
-	if (compositor == NULL) {
-		fprintf(stderr, "wl_compositor not available\n");
-		return 1;
-	}
-	if (shm == NULL) {
-		fprintf(stderr, "wl_shm not available\n");
-		return 1;
-	}
-	if (layer_shell == NULL) {
-		fprintf(stderr, "layer_shell not available\n");
-		return 1;
-	}
+    if (compositor == NULL) {
+        fprintf(stderr, "wl_compositor not available\n");
+        return 1;
+    }
+    if (shm == NULL) {
+        fprintf(stderr, "wl_shm not available\n");
+        return 1;
+    }
+    if (layer_shell == NULL) {
+        fprintf(stderr, "layer_shell not available\n");
+        return 1;
+    }
 
-	egl_init(display);
+    egl_init(display);
 
-	struct fl_surface *s;
+    struct fl_surface *s;
     wl_list_for_each(s, &fl_surfaces, link) {
         s->surface = wl_compositor_create_surface(compositor);
         assert(s->surface);
@@ -390,9 +390,9 @@ int main(int argc, char **argv) {
 
         draw(s);
     }
-	while (wl_display_dispatch(display) != -1 && run_display) {
-		// This space intentionally left blank
-	}
+    while (wl_display_dispatch(display) != -1 && run_display) {
+        // This space intentionally left blank
+    }
 
-	return 0;
+    return 0;
 }
