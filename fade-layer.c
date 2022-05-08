@@ -15,6 +15,12 @@
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
+
+// args
+static double fade_time = 5000;
+
+
+
 static struct wl_display *display;
 static struct wl_compositor *compositor;
 static struct wl_seat *seat;
@@ -23,88 +29,90 @@ static struct wl_pointer *pointer;
 static struct wl_keyboard *keyboard;
 static struct xdg_wm_base *xdg_wm_base;
 static struct zwlr_layer_shell_v1 *layer_shell;
-
-struct zwlr_layer_surface_v1 *layer_surface;
-static struct wl_output *wl_output;
-
-struct wl_surface *wl_surface;
-struct wl_egl_window *egl_window;
-struct wlr_egl_surface *egl_surface;
-struct wl_callback *frame_callback;
-
-static uint32_t output = UINT32_MAX;
-static uint32_t width = 256, height = 256;
-static double alpha = 0.0;
 static bool run_display = true;
 static enum zwlr_layer_surface_v1_keyboard_interactivity keyboard_interactive =
 ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
+struct wl_list fl_surfaces;
+
+struct fl_surface {
+    struct wl_output *output;
+    struct wl_surface *surface;
+    struct wl_egl_window *egl_window;
+    struct wlr_egl_surface *egl_surface;
+    struct wl_callback *frame_callback;
+    struct wl_list link;
+    uint32_t output_global_name;
+    uint32_t width;
+    uint32_t height;
+    struct zwlr_layer_surface_v1 *layer_surface;
+    struct {
+        struct timespec last_frame;
+        double alpha;
+    } demo;
+};
 
 struct wl_surface *cursor_surface, *input_surface;
 
-static struct {
-	struct timespec last_frame;
-	float color[3];
-	int dec;
-} demo;
 
-static void draw(void);
+static void draw(struct fl_surface *s);
 
 static void surface_frame_callback(
 		void *data, struct wl_callback *cb, uint32_t time) {
 	wl_callback_destroy(cb);
-	frame_callback = NULL;
-	draw();
+    struct fl_surface *s = data;
+    s->frame_callback = NULL;
+	draw(s);
 }
 
 static struct wl_callback_listener frame_listener = {
 	.done = surface_frame_callback
 };
 
-static void draw(void) {
-	eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context);
+static void draw(struct fl_surface *s) {
+	eglMakeCurrent(egl_display, s->egl_surface, s->egl_surface, egl_context);
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
+	long ms = (ts.tv_sec - s->demo.last_frame.tv_sec) * 1000 +
+		(ts.tv_nsec - s->demo.last_frame.tv_nsec) / 1000000;
 
-	long ms = (ts.tv_sec - demo.last_frame.tv_sec) * 1000 +
-		(ts.tv_nsec - demo.last_frame.tv_nsec) / 1000000;
-
-    alpha += 1/(5000.0/ms);
-    if (alpha > 1) {
-        alpha = 1;
+    s->demo.alpha += 1/(fade_time/ms);
+    if (s->demo.alpha > 1) {
+        s->demo.alpha = 1;
     }
 
-    demo.color[0] = 0.0;
-    demo.color[1] = 0.0;
-    demo.color[2] = 0.0;
-	glViewport(0, 0, width, height);
-    glClearColor(0, 0, 0, alpha);
+	glViewport(0, 0, s->width, s->height);
+    glClearColor(0, 0, 0, s->demo.alpha);
     glClear(GL_COLOR_BUFFER_BIT);
 
-	frame_callback = wl_surface_frame(wl_surface);
-	wl_callback_add_listener(frame_callback, &frame_listener, NULL);
+	s->frame_callback = wl_surface_frame(s->surface);
+	wl_callback_add_listener(s->frame_callback, &frame_listener, s);
 
-	eglSwapBuffers(egl_display, egl_surface);
+	eglSwapBuffers(egl_display, s->egl_surface);
 
-	demo.last_frame = ts;
+	s->demo.last_frame = ts;
 }
 
 static void layer_surface_configure(void *data,
 		struct zwlr_layer_surface_v1 *surface,
 		uint32_t serial, uint32_t w, uint32_t h) {
-	width = w;
-	height = h;
-	if (egl_window) {
-		wl_egl_window_resize(egl_window, width, height, 0, 0);
+    struct fl_surface *s = data;
+	s->width = w;
+	s->height = h;
+	if (s->egl_window) {
+		wl_egl_window_resize(s->egl_window, s->width, s->height, 0, 0);
 	}
 	zwlr_layer_surface_v1_ack_configure(surface, serial);
 }
 
 static void layer_surface_closed(void *data,
 		struct zwlr_layer_surface_v1 *surface) {
-	eglDestroySurface(egl_display, egl_surface);
-	wl_egl_window_destroy(egl_window);
+
+    struct fl_surface *s = data;
+
+	eglDestroySurface(egl_display, s->egl_surface);
+	wl_egl_window_destroy(s->egl_window);
 	zwlr_layer_surface_v1_destroy(surface);
-	wl_surface_destroy(wl_surface);
+	wl_surface_destroy(s->surface);
 	run_display = false;
 }
 
@@ -131,7 +139,8 @@ static void wl_pointer_motion(void *data, struct wl_pointer *wl_pointer,
 
 static void wl_pointer_button(void *data, struct wl_pointer *wl_pointer,
 		uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
-	if (input_surface == wl_surface) {
+    struct fl_surface *s = data;
+	if (input_surface == s->surface) {
 		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
             printf("ptr btn\n");
 		}
@@ -189,7 +198,6 @@ static void wl_keyboard_enter(void *data, struct wl_keyboard *wl_keyboard,
 static void wl_keyboard_leave(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t serial, struct wl_surface *surface) {
 	fprintf(stderr, "Keyboard leave\n");
-    exit(0);
 }
 
 static void wl_keyboard_key(void *data, struct wl_keyboard *wl_keyboard,
@@ -239,25 +247,60 @@ const struct wl_seat_listener seat_listener = {
 	.capabilities = seat_handle_capabilities,
 	.name = seat_handle_name,
 };
+static void handle_wl_output_geometry(void *data, struct wl_output *wl_output,
+		int32_t x, int32_t y, int32_t width_mm, int32_t height_mm,
+		int32_t subpixel, const char *make, const char *model,
+		int32_t transform) {
+}
+
+static void handle_wl_output_mode(void *data, struct wl_output *output,
+		uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
+	// Who cares
+}
+
+static void handle_wl_output_done(void *data, struct wl_output *output) {
+	// Who cares
+}
+
+static void handle_wl_output_scale(void *data, struct wl_output *output,
+		int32_t factor) {
+
+}
+
+static void handle_wl_output_name(void *data, struct wl_output *output,
+		const char *name) {
+}
+
+static void handle_wl_output_description(void *data, struct wl_output *output,
+		const char *description) {
+	// Who cares
+}
+
+struct wl_output_listener _wl_output_listener = {
+	.geometry = handle_wl_output_geometry,
+	.mode = handle_wl_output_mode,
+	.done = handle_wl_output_done,
+	.scale = handle_wl_output_scale,
+	.name = handle_wl_output_name,
+	.description = handle_wl_output_description,
+};
 
 static void handle_global(void *data, struct wl_registry *registry,
 		uint32_t name, const char *interface, uint32_t version) {
-    printf("handle_global: %s/%d\n",interface,version);
 	if (strcmp(interface, wl_compositor_interface.name) == 0) {
 		compositor = wl_registry_bind(registry, name,
 				&wl_compositor_interface, 1);
 	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
 		shm = wl_registry_bind(registry, name,
 				&wl_shm_interface, 1);
-	} else if (strcmp(interface, "wl_output") == 0) {
-		if (output != UINT32_MAX) {
-			if (!wl_output) {
-				wl_output = wl_registry_bind(registry, name,
-						&wl_output_interface, 1);
-			} else {
-				output--;
-			}
-		}
+    } else if (strcmp(interface, wl_output_interface.name) == 0) {
+        struct fl_surface *s = calloc(1, sizeof(struct fl_surface));
+        clock_gettime(CLOCK_MONOTONIC, &s->demo.last_frame);
+		s->output = wl_registry_bind(registry, name,
+				&wl_output_interface, version < 4 ? version : 4 );
+		s->output_global_name = name;
+		wl_output_add_listener(s->output, &_wl_output_listener, s->surface);
+        wl_list_insert(&fl_surfaces, &s->link);
 	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
 		seat = wl_registry_bind(registry, name,
 				&wl_seat_interface, 1);
@@ -282,12 +325,23 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 int main(int argc, char **argv) {
+    int c;
+    while ((c = getopt(argc, argv, "t:")) != -1) {
+        switch (c) {
+            case 't':
+                fade_time = atoi(optarg);
+                break;
+            default:
+                return 1;
+        }
+    }
 	char *namespace = "wlroots";
 	display = wl_display_connect(NULL);
 	if (display == NULL) {
 		fprintf(stderr, "Failed to create display\n");
 		return 1;
 	}
+	wl_list_init(&fl_surfaces);
 	struct wl_registry *registry = wl_display_get_registry(display);
 	wl_registry_add_listener(registry, &registry_listener, NULL);
 	wl_display_roundtrip(display);
@@ -307,44 +361,35 @@ int main(int argc, char **argv) {
 
 	egl_init(display);
 
-	wl_surface = wl_compositor_create_surface(compositor);
-	assert(wl_surface);
+	struct fl_surface *s;
+    wl_list_for_each(s, &fl_surfaces, link) {
+        s->surface = wl_compositor_create_surface(compositor);
+        assert(s->surface);
+        s->layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell,
+                s->surface, s->output, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, namespace);
+        assert(s->layer_surface);
+        zwlr_layer_surface_v1_set_size(s->layer_surface, 0, 0);
+        zwlr_layer_surface_v1_set_anchor(s->layer_surface,
+                ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT |
+                ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+        zwlr_layer_surface_v1_set_exclusive_zone(s->layer_surface, 1);
+        zwlr_layer_surface_v1_set_keyboard_interactivity(
+                s->layer_surface, keyboard_interactive);
+        zwlr_layer_surface_v1_add_listener(s->layer_surface,
+                &layer_surface_listener, s);
+        wl_surface_commit(s->surface);
+        wl_display_roundtrip(display);
 
-	struct wl_region *opaque_region =
-		wl_compositor_create_region(compositor);
-	assert(opaque_region);
-	//wl_surface_set_input_region(wl_surface, input_region);
-    wl_surface_set_opaque_region(wl_surface, opaque_region);
-	wl_region_destroy(opaque_region);
-	layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell,
-				wl_surface, wl_output, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, namespace);
-	assert(layer_surface);
-	zwlr_layer_surface_v1_set_size(layer_surface, 0, 0);
-    zwlr_layer_surface_v1_set_anchor(layer_surface,
-            ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
-            ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT |
-            ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
-            ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT
-            );
-    zwlr_layer_surface_v1_set_exclusive_zone(layer_surface, 1);
-	zwlr_layer_surface_v1_set_keyboard_interactivity(
-			layer_surface, keyboard_interactive);
-	zwlr_layer_surface_v1_add_listener(layer_surface,
-			&layer_surface_listener, layer_surface);
-	wl_surface_commit(wl_surface);
-	wl_display_roundtrip(display);
+        s->egl_window = wl_egl_window_create(s->surface, s->width, s->height);
+        assert(s->egl_window);
+        s->egl_surface = eglCreatePlatformWindowSurfaceEXT(
+                egl_display, egl_config, s->egl_window, NULL);
+        assert(s->egl_surface != EGL_NO_SURFACE);
 
-	egl_window = wl_egl_window_create(wl_surface, width, height);
-	assert(egl_window);
-	egl_surface = eglCreatePlatformWindowSurfaceEXT(
-		egl_display, egl_config, egl_window, NULL);
-	assert(egl_surface != EGL_NO_SURFACE);
+        wl_display_roundtrip(display);
 
-	wl_display_roundtrip(display);
-
-	clock_gettime(CLOCK_MONOTONIC, &demo.last_frame);
-	draw();
-
+        draw(s);
+    }
 	while (wl_display_dispatch(display) != -1 && run_display) {
 		// This space intentionally left blank
 	}
