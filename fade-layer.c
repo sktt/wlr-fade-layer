@@ -16,6 +16,17 @@
 #include "xdg-shell-client-protocol.h"
 
 
+// t = current time, d = duration
+double easeOutQuad(double t, double d) {
+    double td = t / d ;
+    return 2*td - td*td;
+}
+
+double easeOutCubic(double t, double d) {
+    double td = t / d - 1;
+    return td*td*td+1;
+}
+
 // args
 static double fade_time = 5000;
 
@@ -46,7 +57,7 @@ struct fl_surface {
     uint32_t height;
     struct zwlr_layer_surface_v1 *layer_surface;
     struct {
-        struct timespec last_frame;
+        struct timespec first_frame;
         double alpha;
     } demo;
 };
@@ -72,12 +83,14 @@ static void draw(struct fl_surface *s) {
     eglMakeCurrent(egl_display, s->egl_surface, s->egl_surface, egl_context);
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    long ms = (ts.tv_sec - s->demo.last_frame.tv_sec) * 1000 +
-        (ts.tv_nsec - s->demo.last_frame.tv_nsec) / 1000000;
 
-    s->demo.alpha += 1/(fade_time/ms);
-    if (s->demo.alpha > 1) {
+    long ms_first_frame = (ts.tv_sec - s->demo.first_frame.tv_sec) * 1000 +
+        (ts.tv_nsec - s->demo.first_frame.tv_nsec) / 1000000;
+
+    if (ms_first_frame >= fade_time) {
         s->demo.alpha = 1;
+    } else {
+        s->demo.alpha = easeOutCubic(ms_first_frame, fade_time);
     }
 
     glViewport(0, 0, s->width, s->height);
@@ -88,8 +101,6 @@ static void draw(struct fl_surface *s) {
     wl_callback_add_listener(s->frame_callback, &frame_listener, s);
 
     eglSwapBuffers(egl_display, s->egl_surface);
-
-    s->demo.last_frame = ts;
 }
 
 static void layer_surface_configure(void *data,
@@ -295,7 +306,8 @@ static void handle_global(void *data, struct wl_registry *registry,
                 &wl_shm_interface, 1);
     } else if (strcmp(interface, wl_output_interface.name) == 0) {
         struct fl_surface *s = calloc(1, sizeof(struct fl_surface));
-        clock_gettime(CLOCK_MONOTONIC, &s->demo.last_frame);
+        clock_gettime(CLOCK_MONOTONIC, &s->demo.first_frame);
+
         s->output = wl_registry_bind(registry, name,
                 &wl_output_interface, version < 4 ? version : 4 );
         s->output_global_name = name;
